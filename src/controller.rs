@@ -24,17 +24,7 @@ impl<'b> Controller<'b> {
         Controller { config, assets }
     }
 
-    pub fn run(&self, inputs: Vec<Input>) -> Result<bool> {
-        self.run_with_error_handler(inputs, default_error_handler)
-    }
-
-    pub fn run_with_error_handler(
-        &self,
-        inputs: Vec<Input>,
-        handle_error: impl Fn(&Error, &mut dyn Write),
-    ) -> Result<bool> {
-        let mut output_type;
-
+    fn determine_output_type(&self, inputs: &[Input]) -> Result<OutputType> {
         #[cfg(feature = "paging")]
         {
             use crate::input::InputKind;
@@ -54,16 +44,33 @@ impl<'b> Controller<'b> {
                     paging_mode = PagingMode::Never;
                 }
             }
-            output_type = OutputType::from_mode(paging_mode, self.config.pager)?;
+            OutputType::from_mode(paging_mode, self.config.pager)
         }
 
         #[cfg(not(feature = "paging"))]
         {
-            output_type = OutputType::stdout();
+            Ok(OutputType::stdout())
         }
+    }
 
+    pub fn run(&self, inputs: Vec<Input>) -> Result<bool> {
+        let mut output_type = self.determine_output_type(&inputs)?;
         let attached_to_pager = output_type.is_pager();
         let writer = output_type.handle()?;
+        self.run_with_error_handler(inputs, writer, attached_to_pager, default_error_handler)
+    }
+
+    pub fn run_with_writer(&self, inputs: Vec<Input>, writer: &mut dyn Write) -> Result<bool> {
+        self.run_with_error_handler(inputs, writer, false, default_error_handler)
+    }
+
+    pub fn run_with_error_handler(
+        &self,
+        inputs: Vec<Input>,
+        writer: &mut dyn Write,
+        attached_to_pager: bool,
+        handle_error: impl Fn(&Error, &mut dyn Write),
+    ) -> Result<bool> {
         let mut no_errors: bool = true;
 
         let stderr = io::stderr();

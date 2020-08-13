@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fmt;
 use std::io::Read;
 
 use console::Term;
@@ -275,6 +276,17 @@ impl<'a> PrettyPrinter<'a> {
     /// If you want to call 'print' multiple times, you have to call the appropriate
     /// input_* methods again.
     pub fn print(&mut self) -> Result<bool> {
+        self.configure();
+        // Collect the inputs to print
+        let mut inputs: Vec<Input> = vec![];
+        std::mem::swap(&mut inputs, &mut self.inputs);
+
+        // Run the controller
+        let controller = Controller::new(&self.config, &self.assets);
+        controller.run(inputs.into_iter().map(|i| i.into()).collect())
+    }
+
+    fn configure(&mut self) {
         self.config.highlighted_lines =
             HighlightedLineRanges(LineRanges::from(self.highlighted_lines.clone()));
         self.config.term_width = self
@@ -299,14 +311,18 @@ impl<'a> PrettyPrinter<'a> {
             style_components.push(StyleComponent::Changes);
         }
         self.config.style_components = StyleComponents::new(&style_components);
+    }
+}
 
-        // Collect the inputs to print
-        let mut inputs: Vec<Input> = vec![];
-        std::mem::swap(&mut inputs, &mut self.inputs);
+impl fmt::Display for PrettyPrinter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.configure();
 
-        // Run the controller
         let controller = Controller::new(&self.config, &self.assets);
-        controller.run(inputs.into_iter().map(|i| i.into()).collect())
+        match controller.run_with_writer(self.inputs.into_iter().map(|i| i.into()).collect(), f) {
+            Ok(true) => Ok(()),
+            _ => Err(fmt::Error),
+        }
     }
 }
 
